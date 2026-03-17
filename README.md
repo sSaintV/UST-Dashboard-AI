@@ -46,8 +46,8 @@ Once those three programs are installed, running the application requires exactl
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/sSaintV/UST-Dashboard-AI.git
-cd UST-Dashboard-AI
+git clone https://github.com/your-org/ust-dashboard-ai.git
+cd ust-dashboard-ai
 ```
 
 ### 2. Configure Environment (Optional)

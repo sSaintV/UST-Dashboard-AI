@@ -95,6 +95,7 @@ class EmotionService:
             "fps":        0.0,
             "dominant":   "neutral",
             "history":    [],
+            "emotions":   {label: 0.0 for label in EMOTION_LABELS},
         }
 
     def _set_state(self, **kwargs) -> None:
@@ -123,32 +124,40 @@ class EmotionService:
         return e / e.sum()
 
     @staticmethod
-    def _sentiment_from_probs(probs: np.ndarray) -> tuple[dict, str]:
-        """Map 8-class softmax probabilities to pos/neu/neg buckets."""
+    def _sentiment_from_probs(probs: np.ndarray) -> tuple[dict, str, dict]:
+        """Map 8-class softmax probabilities to pos/neu/neg buckets and return all scores."""
         sent = {"positive": 0.0, "neutral": 0.0, "negative": 0.0}
+        raw_emotions = {}
         for i, label in enumerate(EMOTION_LABELS):
+            score = float(probs[i])
+            raw_emotions[label] = score
             if label in POSITIVE_SET:
-                sent["positive"] += float(probs[i])
+                sent["positive"] += score
             elif label in NEGATIVE_SET:
-                sent["negative"] += float(probs[i])
+                sent["negative"] += score
             else:
-                sent["neutral"] += float(probs[i])
+                sent["neutral"] += score
         dominant = EMOTION_LABELS[int(probs.argmax())]
-        return sent, dominant
+        return sent, dominant, raw_emotions
 
     @staticmethod
-    def _window_averages(window: deque) -> tuple[float, float, float, str]:
+    def _window_averages(window: deque) -> tuple[float, float, float, str, dict]:
         """Compute mean pos/neu/neg% and most-frequent dominant label."""
         if not window:
-            return 0.0, 100.0, 0.0, "neutral"
-        pos = float(np.mean([s["positive"] for _, s, _ in window])) * 100
-        neu = float(np.mean([s["neutral"]  for _, s, _ in window])) * 100
-        neg = float(np.mean([s["negative"] for _, s, _ in window])) * 100
+            return 0.0, 100.0, 0.0, "neutral", {label: 0.0 for label in EMOTION_LABELS}
+        pos = float(np.mean([s["positive"] for _, s, _, _ in window])) * 100
+        neu = float(np.mean([s["neutral"]  for _, s, _, _ in window])) * 100
+        neg = float(np.mean([s["negative"] for _, s, _, _ in window])) * 100
+        
+        avg_emotions = {}
+        for label in EMOTION_LABELS:
+            avg_emotions[label] = float(np.mean([r[label] for _, _, _, r in window])) * 100
+
         dominant = max(
-            {d for _, _, d in window},
-            key=lambda em: sum(1 for _, _, d2 in window if d2 == em),
+            {d for _, _, d, _ in window},
+            key=lambda em: sum(1 for _, _, d2, _ in window if d2 == em),
         )
-        return pos, neu, neg, dominant
+        return pos, neu, neg, dominant, avg_emotions
 
     # ── Main run path ─────────────────────────────────────────────────────────
 
@@ -193,7 +202,7 @@ class EmotionService:
             logger.warning(
                 "Camera %d unavailable — switching to demo mode.", self._camera_index
             )
-            face_det.close()
+            cap.release()
             self._run_demo()
             return
 
@@ -202,7 +211,7 @@ class EmotionService:
         cap.set(cv2.CAP_PROP_FPS, 30)
 
         # 5. Inference loop
-        window:      deque = deque()           # (ts, sentiment_dict, dominant_str)
+        window:      deque = deque()           # (ts, sentiment_dict, dominant_str, raw_emotions_dict)
         frame_times: deque = deque(maxlen=30)  # for FPS calculation
         history:     list  = []
         min_interval = 1.0 / MAX_INFERENCE_FPS
@@ -260,10 +269,10 @@ class EmotionService:
                     # Run ONNX inference → (1, 8) logits
                     logits = session.run(None, {input_name: inp})[0][0]
                     probs  = self._softmax(logits)
-                    sent, dominant = self._sentiment_from_probs(probs)
-                    window.append((now, sent, dominant))
+                    sent, dominant, raw = self._sentiment_from_probs(probs)
+                    window.append((now, sent, dominant, raw))
 
-                pos, neu, neg, dominant = self._window_averages(window)
+                pos, neu, neg, dominant, avg_emotions = self._window_averages(window)
 
                 # Draw bounding boxes for video feed
                 vis_frame = frame.copy()
@@ -294,6 +303,7 @@ class EmotionService:
                     "neutral":  round(neu, 1),
                     "negative": round(neg, 1),
                     "faces":    len(faces),
+                    "emotions": {k: round(v, 1) for k, v in avg_emotions.items()}
                 }
                 history.append(snap)
                 if len(history) > HISTORY_MAXLEN:
@@ -310,6 +320,7 @@ class EmotionService:
                         "fps":        round(fps, 1),
                         "dominant":   dominant,
                         "history":    list(history),
+                        "emotions":   {k: round(v, 1) for k, v in avg_emotions.items()}
                     }
 
                 # Throttle to MAX_INFERENCE_FPS to spare CPU for other panels
@@ -363,12 +374,19 @@ class EmotionService:
                 self._frame_cond.notify_all()
 
             now  = time.time()
+            # Demo emotions: just map to neutral for simplicity or distribute based on pos/neu/neg
+            demo_emotions = {label: 0.0 for label in EMOTION_LABELS}
+            demo_emotions["happiness"] = pos if pos > 0 else 0.0
+            demo_emotions["neutral"]   = neu if neu > 0 else 0.0
+            demo_emotions["sadness"]   = neg if neg > 0 else 0.0
+
             snap = {
                 "ts":       now,
                 "positive": round(pos, 1),
                 "neutral":  round(neu, 1),
                 "negative": round(neg, 1),
                 "faces":    face_count,
+                "emotions": {k: round(v, 1) for k, v in demo_emotions.items()}
             }
             history.append(snap)
             if len(history) > HISTORY_MAXLEN:
@@ -385,6 +403,7 @@ class EmotionService:
                     "fps":        15.0,   # representative synthetic FPS
                     "dominant":   dominant,
                     "history":    list(history),
+                    "emotions":   {k: round(v, 1) for k, v in demo_emotions.items()}
                 }
 
             time.sleep(2)  # update every 2 s (matches frontend poll interval)

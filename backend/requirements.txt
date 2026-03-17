@@ -10,7 +10,7 @@ opencv-contrib-python==4.13.0.92
 
 # mediapipe: ARM-optimised face detection; Google-designed for edge devices.
 # Targets ~30 FPS face detection on Pi 5 CPU.
-mediapipe==0.10.32
+mediapipe
 
 # onnxruntime: CPU inference for the FERPlus emotion ONNX model.
 # Uses all available CPU cores via intra_op_num_threads.

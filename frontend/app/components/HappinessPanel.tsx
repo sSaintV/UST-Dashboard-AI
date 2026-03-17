@@ -9,6 +9,7 @@ interface HistoryPoint {
   neutral:  number;
   negative: number;
   faces:    number;
+  emotions: Record<string, number>;
 }
 
 interface EmotionData {
@@ -20,6 +21,7 @@ interface EmotionData {
   face_count: number;
   fps:        number;
   dominant:   string;
+  emotions:   Record<string, number>;
   history:    HistoryPoint[];
 }
 
@@ -36,6 +38,13 @@ const MOOD_CFG: Record<string, { emoji: string; color: string; label: string }> 
   contempt:  { emoji: '😒', color: '#a78bfa',  label: 'Contempt'  },
 };
 const DEFAULT_MOOD = MOOD_CFG.neutral;
+
+// ── Classification Groups ─────────────────────────────────────────────────────
+const EMOTION_GROUPS = {
+  positive: ["happiness", "surprise"],
+  neutral: ["neutral"],
+  negative: ["sadness", "anger", "disgust", "fear", "contempt"]
+};
 
 // ── Sparkline ─────────────────────────────────────────────────────────────────
 function Sparkline({ 
@@ -151,6 +160,13 @@ export default function HappinessPanel() {
   const moodCfg      = MOOD_CFG[dominant] ?? DEFAULT_MOOD;
   const accentColor  = moodCfg.color;
 
+  // Emotion category labels with emojis
+  const GROUP_LABELS = {
+    positive: "😊 Positive",
+    neutral: "😐 Neutral",
+    negative: "😔 Negative"
+  };
+
   // ── Render: backend unreachable ──
   if (error) {
     return (
@@ -244,26 +260,49 @@ export default function HappinessPanel() {
             </div>
           </div>
 
-          {/* ── Sentiment bars ── */}
+          {/* ── Sentiment Category bars ── */}
           <div className="sentiment-bars" role="region" aria-label="Sentiment breakdown">
-            <SentimentRow
-              label="😊 Positive"
-              pct={data.positive}
-              fillClass="bar-positive"
-              labelClass="positive-label"
-            />
-            <SentimentRow
-              label="😐 Neutral"
-              pct={data.neutral}
-              fillClass="bar-neutral"
-              labelClass="neutral-label"
-            />
-            <SentimentRow
-              label="😔 Negative"
-              pct={data.negative}
-              fillClass="bar-negative"
-              labelClass="negative-label"
-            />
+            {(Object.keys(EMOTION_GROUPS) as Array<keyof typeof EMOTION_GROUPS>).map(groupId => {
+              const pct = data[groupId];
+              const emotionsInGroup = EMOTION_GROUPS[groupId];
+              
+              return (
+                <div key={groupId} className="sentiment-group-detailed">
+                  <SentimentRow
+                    label={GROUP_LABELS[groupId]}
+                    pct={pct}
+                    fillClass={`bar-${groupId}`}
+                    labelClass={`${groupId}-label`}
+                  />
+                  
+                  {/* ── Individual Emotion Bars ── */}
+                  <div className="individual-emotion-bars">
+                    {emotionsInGroup.map(emoKey => {
+                      const emoScore = data.emotions[emoKey] || 0;
+                      const emoCfg = MOOD_CFG[emoKey] || DEFAULT_MOOD;
+                      return (
+                        <div key={emoKey} className="individual-emotion-row">
+                          <span className="indiv-label">
+                            <span className="indiv-emoji">{emoCfg.emoji}</span>
+                            {emoCfg.label}
+                          </span>
+                          <div className="indiv-track">
+                             <div 
+                               className="indiv-fill" 
+                               style={{ 
+                                 width: `${Math.max(emoScore, 2)}%`,
+                                 background: emoCfg.color 
+                               }} 
+                             />
+                          </div>
+                          <span className="indiv-pct">{emoScore.toFixed(0)}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           {/* ── Sparklines (rolling window) ── */}

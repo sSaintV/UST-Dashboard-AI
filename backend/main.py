@@ -14,11 +14,11 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+load_dotenv()
+
 from services.emotion_service  import emotion_service
 from services.footfall_service import footfall_service
 from routers import emotion, weather, news, footfall
-
-load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,

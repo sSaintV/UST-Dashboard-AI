@@ -22,7 +22,7 @@ pip install --quiet -r "$BACKEND_DIR/requirements.txt"
 
 echo "▶ Starting FastAPI backend on 127.0.0.1:8000…"
 cd "$BACKEND_DIR"
-uvicorn main:app --host 127.0.0.1 --port 8000 --workers 1 &
+python3 -m uvicorn main:app --host 127.0.0.1 --port 8000 --workers 1 &
 BACKEND_PID=$!
 cd "$SCRIPT_DIR"
 

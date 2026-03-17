@@ -18,22 +18,24 @@ router = APIRouter(tags=["emotion"])
 class HistoryPoint(BaseModel):
     """Single sparkline data-point (one inference cycle ~2 s apart)."""
     ts:       float = Field(..., description="Unix timestamp")
-    positive: float = Field(..., ge=0, le=100)
-    neutral:  float = Field(..., ge=0, le=100)
-    negative: float = Field(..., ge=0, le=100)
     faces:    int   = Field(..., ge=0)
+    positive: float = 0.0
+    neutral:  float = 100.0
+    negative: float = 0.0
+    emotions: dict[str, float] = Field(default_factory=dict)
 
 
 class EmotionResponse(BaseModel):
     """Aggregated emotion state served to the Next.js frontend."""
     available:  bool          = Field(..., description="True when camera+model are operational or demo is active")
     demo:       bool          = False
-    positive:   float         = Field(0.0,  ge=0, le=100)
-    neutral:    float         = Field(100.0, ge=0, le=100)
-    negative:   float         = Field(0.0,  ge=0, le=100)
-    face_count: int           = Field(0, ge=0)
-    fps:        float         = Field(0.0, ge=0)
+    positive:   float         = 0.0
+    neutral:    float         = 100.0
+    negative:   float         = 0.0
+    face_count: int           = 0
+    fps:        float         = 0.0
     dominant:   str           = "neutral"
+    emotions:   dict[str, float] = Field(default_factory=dict)
     history:    List[HistoryPoint] = []
 
 
@@ -44,17 +46,7 @@ def get_emotion() -> EmotionResponse:
     Safe to poll every 2 s; results are held in a thread-safe in-memory dict.
     """
     state = emotion_service.get_state()
-    return EmotionResponse(
-        available=state.get("available", False),
-        demo=state.get("demo", False),
-        positive=state.get("positive", 0.0),
-        neutral=state.get("neutral", 100.0),
-        negative=state.get("negative", 0.0),
-        face_count=state.get("face_count", 0),
-        fps=state.get("fps", 0.0),
-        dominant=state.get("dominant", "neutral"),
-        history=[HistoryPoint(**h) for h in state.get("history", [])],
-    )
+    return EmotionResponse(**state)
 
 
 @router.get("/emotion/feed")
